@@ -20,6 +20,8 @@ namespace SqlStructViewer
         public string Comment = "";
         public bool NotNull;
         public bool IsPk;
+        // 预先算好的搜索键：去掉分隔符并大写，("ACCT_ID" -> "ACCTID")
+        public string NameKey = "";
     }
 
     internal sealed class DbTable
@@ -27,6 +29,8 @@ namespace SqlStructViewer
         public string Name = "";
         public string Source = "";
         public string Description = "";
+        // 预先算好的搜索键，见 SqlParser.SearchKey
+        public string NameKey = "";
         public readonly List<DbColumn> Columns = new List<DbColumn>();
     }
 
@@ -55,6 +59,21 @@ namespace SqlStructViewer
         {
             "PRIMARY", "UNIQUE", "FOREIGN", "CHECK", "CONSTRAINT", "KEY", "INDEX", "EXCLUDE"
         };
+
+        // 模糊搜索键：去掉空格/制表符/下划线/连字符/点号，再统一大写。
+        // 于是 "acct id"、"ACCT-ID"、"acct_id" 都归一成 "ACCTID"，互相都能搜到。
+        public static string SearchKey(string s)
+        {
+            if (string.IsNullOrEmpty(s)) return "";
+            StringBuilder sb = new StringBuilder(s.Length);
+            for (int i = 0; i < s.Length; i++)
+            {
+                char c = s[i];
+                if (c == ' ' || c == '\t' || c == '_' || c == '-' || c == '.') continue;
+                sb.Append(char.ToUpperInvariant(c));
+            }
+            return sb.ToString();
+        }
 
         public static string ReadAllTextAuto(string path)
         {
@@ -122,6 +141,7 @@ namespace SqlStructViewer
 
                     cur = new DbTable();
                     cur.Name = Unquote(cm.Groups["name"].Value);
+                    cur.NameKey = SearchKey(cur.Name);
                     ApplyHeader(cur, pending);
                     pending.Clear();
                     pkCols.Clear();
@@ -313,6 +333,7 @@ namespace SqlStructViewer
             DbColumn col = new DbColumn();
             col.Name = Unquote(tok[0]);
             if (col.Name.Length == 0) return null;
+            col.NameKey = SearchKey(col.Name);
 
             col.Type = tok[1];
             int i = 2;
@@ -637,8 +658,24 @@ namespace SqlStructViewer
                          "Paste a file or folder path and press Enter (several allowed, separated by ; or newlines)");
             }
         }
-        public static string TbFilterLabel { get { return P("过滤:", "Filter:"); } }
-        public static string TbFilterTip { get { return P("按表名过滤", "Filter by table name"); } }
+        public static string TbFilterLabel { get { return P("表名:", "Table:"); } }
+        public static string TbFilterTip
+        {
+            get
+            {
+                return P("按表名模糊过滤：空格、下划线、连字符、点号一律忽略（如 bc acct 可搜到 BC_ACCT）",
+                         "Filter tables by partial name; spaces, underscores, hyphens and dots are ignored (bc acct finds BC_ACCT)");
+            }
+        }
+        public static string TbFieldFilterLabel { get { return P("字段:", "Field:"); } }
+        public static string TbFieldFilterTip
+        {
+            get
+            {
+                return P("在全部已载入的表里按字段名模糊查找：空格、下划线、连字符、点号一律忽略（如 acct id 可搜到 ACCT_ID）",
+                         "Search every loaded table by partial field name; spaces, underscores, hyphens and dots are ignored (acct id finds ACCT_ID)");
+            }
+        }
 
         // ---------- 表清单列 ----------
         public static string ColTable { get { return P("表名", "Table"); } }
@@ -661,6 +698,13 @@ namespace SqlStructViewer
         // ---------- 头部与状态 ----------
         public static string NoFile { get { return P("未打开文件", "No file opened"); } }
         public static string NoMatch { get { return P("无匹配的表", "No matching table"); } }
+        public static string NoFieldMatch { get { return P("无匹配的字段", "No matching column"); } }
+        public static string NoTableHasField { get { return P("没有任何表包含该字段", "No table contains a matching column"); } }
+        public static string MatchFmt { get { return P("  匹配 {0} / {1}", "  matched {0} / {1}"); } }
+        public static string StatsFieldFmt
+        {
+            get { return P("表 {0} / {1}    命中字段 {2} / {3}", "Tables {0} / {1}    matched cols {2} / {3}"); }
+        }
         public static string ColumnUnit { get { return P(" 字段", " columns"); } }
         public static string Ready
         {
@@ -722,7 +766,8 @@ namespace SqlStructViewer
                         "  • 「路径」框粘贴文件或文件夹路径，回车打开；可一次粘贴多个（用 ; 或换行分隔），带空格的路径可加引号\r\n" +
                         "  • 「打开文件夹」对话框带地址栏，可在其中 Ctrl+V 粘贴路径，并支持多选文件夹\r\n" +
                         "  • 直接把文件或文件夹拖进窗口\r\n\r\n" +
-                        "过滤框按表名筛选；右侧列表 Ctrl+C 复制选中行，Ctrl+A 全选。\r\n" +
+                        "「表名」框筛表；「字段」框在**全部已载入的表**里按字段名模糊查找（部分匹配、不区分大小写，Ctrl+F 定位）。\r\n" +
+                        "右侧列表 Ctrl+C 复制选中行，Ctrl+A 全选。\r\n" +
                         "菜单「语言」可切换中文 / English。\r\n\r\n" +
                         "单文件独立 EXE，无需安装。\r\nMIT License";
                 }
@@ -733,7 +778,8 @@ namespace SqlStructViewer
                     "  - Paste a file or folder path into the Path box and press Enter; several paths allowed (separated by ; or newlines); quote paths that contain spaces\r\n" +
                     "  - The Open Folder dialog has an address bar where you can paste a path; multi-select is supported\r\n" +
                     "  - Drag files or folders straight onto the window\r\n\r\n" +
-                    "The Filter box narrows the table list; Ctrl+C copies selected rows, Ctrl+A selects all.\r\n" +
+                    "The Table box filters tables; the Field box searches every loaded table for a partial field name (Ctrl+F jumps to it).\r\n" +
+                    "Ctrl+C copies selected rows, Ctrl+A selects all.\r\n" +
                     "Use the Language menu to switch between English and Chinese.\r\n\r\n" +
                     "Single-file standalone EXE, no installation required.\r\nMIT License";
             }
@@ -772,12 +818,17 @@ namespace SqlStructViewer
         private ToolStripMenuItem miLangEn;
         private ToolStripLabel lblPathCaption;
         private ToolStripLabel lblFilterCaption;
+        private ToolStripLabel lblFieldFilterCaption;
+        private ToolStripTextBox txtFieldFilter;
         private ToolStripMenuItem miCopySelected;
         private ToolStripMenuItem miCopyAll;
 
         private readonly List<DbTable> allTables = new List<DbTable>();
+        private DbTable currentTable;
         private string currentPath = "";
         private int lastFailed;
+        private int matchedFields;
+        private int totalFields;
 
         public MainForm(string[] args)
         {
@@ -807,6 +858,23 @@ namespace SqlStructViewer
                 }
                 if (files.Count > 0) LoadFiles(files.ToArray());
             }
+        }
+
+        protected override bool ProcessCmdKey(ref Message msg, Keys keyData)
+        {
+            if (keyData == (Keys.Control | Keys.F))
+            {
+                txtFieldFilter.Focus();
+                txtFieldFilter.SelectAll();
+                return true;
+            }
+            if (keyData == (Keys.Control | Keys.Shift | Keys.F))
+            {
+                txtFilter.Focus();
+                txtFilter.SelectAll();
+                return true;
+            }
+            return base.ProcessCmdKey(ref msg, keyData);
         }
 
         protected override void OnLoad(EventArgs e)
@@ -899,8 +967,10 @@ namespace SqlStructViewer
             btnGo.ToolTipText = S.TbOpenPathTip;
             lblPathCaption.Text = S.TbPathLabel;
             lblFilterCaption.Text = S.TbFilterLabel;
+            lblFieldFilterCaption.Text = S.TbFieldFilterLabel;
             txtPath.ToolTipText = S.TbPathTip;
             txtFilter.ToolTipText = S.TbFilterTip;
+            txtFieldFilter.ToolTipText = S.TbFieldFilterTip;
 
             lstTables.Columns[0].Text = S.ColTable;
             lstTables.Columns[1].Text = S.ColCols;
@@ -951,17 +1021,24 @@ namespace SqlStructViewer
 
             txtPath = new ToolStripTextBox();
             txtPath.AutoSize = false;
-            txtPath.Width = 300;
+            txtPath.Width = 260;
             txtPath.ToolTipText = S.TbPathTip;
 
             txtFilter = new ToolStripTextBox();
             txtFilter.AutoSize = false;
-            txtFilter.Width = 220;
+            txtFilter.Width = 150;
             txtFilter.ToolTipText = S.TbFilterTip;
             txtFilter.TextChanged += new EventHandler(delegate { RefreshTableList(); });
 
+            txtFieldFilter = new ToolStripTextBox();
+            txtFieldFilter.AutoSize = false;
+            txtFieldFilter.Width = 150;
+            txtFieldFilter.ToolTipText = S.TbFieldFilterTip;
+            txtFieldFilter.TextChanged += new EventHandler(delegate { RefreshTableList(); });
+
             lblPathCaption = new ToolStripLabel(S.TbPathLabel);
             lblFilterCaption = new ToolStripLabel(S.TbFilterLabel);
+            lblFieldFilterCaption = new ToolStripLabel(S.TbFieldFilterLabel);
             lblStats = new ToolStripLabel("");
             lblStats.Alignment = ToolStripItemAlignment.Right;
 
@@ -974,6 +1051,9 @@ namespace SqlStructViewer
             tool.Items.Add(new ToolStripSeparator());
             tool.Items.Add(lblFilterCaption);
             tool.Items.Add(txtFilter);
+            tool.Items.Add(new ToolStripSeparator());
+            tool.Items.Add(lblFieldFilterCaption);
+            tool.Items.Add(txtFieldFilter);
             tool.Items.Add(lblStats);
             Controls.Add(tool);
 
@@ -1199,6 +1279,7 @@ namespace SqlStructViewer
         private void CloseAll()
         {
             allTables.Clear();
+            currentTable = null;
             currentPath = "";
             lstTables.Items.Clear();
             lstColumns.Items.Clear();
@@ -1239,24 +1320,66 @@ namespace SqlStructViewer
 
         private void RefreshTableList()
         {
-            string filter = txtFilter == null ? "" : txtFilter.Text.Trim();
+            string tf = TableKey;
+            string ff = FieldKey;
+
             lstTables.BeginUpdate();
             lstTables.Items.Clear();
+            matchedFields = 0;
+            totalFields = 0;
+
             for (int i = 0; i < allTables.Count; i++)
             {
                 DbTable t = allTables[i];
-                if (filter.Length > 0 && t.Name.IndexOf(filter, StringComparison.OrdinalIgnoreCase) < 0) continue;
+                totalFields += t.Columns.Count;
+
+                if (tf.Length > 0 && t.NameKey.IndexOf(tf, StringComparison.Ordinal) < 0) continue;
+
+                int hits = CountFieldHits(t, ff);
+                if (ff.Length > 0 && hits == 0) continue;   // 字段过滤：在全部表里筛
+
                 ListViewItem it = new ListViewItem(t.Name);
-                it.SubItems.Add(t.Columns.Count.ToString());
+                it.SubItems.Add(ff.Length > 0 ? (hits + " / " + t.Columns.Count) : t.Columns.Count.ToString());
                 it.SubItems.Add(JoinPk(t));
                 it.SubItems.Add(t.Source);
                 it.Tag = t;
                 lstTables.Items.Add(it);
+                matchedFields += hits;
             }
             lstTables.EndUpdate();
             RefreshStats();
             if (lstTables.Items.Count > 0) lstTables.Items[0].Selected = true;
-            else { lstColumns.Items.Clear(); lblTableHeader.Text = S.NoMatch; }
+            else
+            {
+                currentTable = null;
+                lstColumns.Items.Clear();
+                lblTableHeader.Text = (ff.Length > 0 && tf.Length == 0) ? S.NoTableHasField : S.NoMatch;
+            }
+        }
+
+        // 归一化后的关键词（去掉分隔符 + 大写）；空串表示不过滤。
+        // 于是 "acct id" / "acct-id" / "ACCT_ID" 都能命中 ACCT_ID。
+        private string FieldKey
+        {
+            get { return SqlParser.SearchKey(txtFieldFilter == null ? "" : txtFieldFilter.Text); }
+        }
+
+        private string TableKey
+        {
+            get { return SqlParser.SearchKey(txtFilter == null ? "" : txtFilter.Text); }
+        }
+
+        private static bool FieldHit(DbColumn c, string key)
+        {
+            return key.Length == 0 || c.NameKey.IndexOf(key, StringComparison.Ordinal) >= 0;
+        }
+
+        private static int CountFieldHits(DbTable t, string key)
+        {
+            if (key.Length == 0) return t.Columns.Count;
+            int n = 0;
+            for (int i = 0; i < t.Columns.Count; i++) if (FieldHit(t.Columns[i], key)) n++;
+            return n;
         }
 
         private static string JoinPk(DbTable t)
@@ -1269,24 +1392,44 @@ namespace SqlStructViewer
         private void RefreshStats()
         {
             if (lblStats == null) return;
-            lblStats.Text = string.Format(S.StatsFmt, lstTables.Items.Count, allTables.Count, CountColumns());
+            if (FieldKey.Length > 0)
+                lblStats.Text = string.Format(S.StatsFieldFmt, lstTables.Items.Count, allTables.Count, matchedFields, totalFields);
+            else
+                lblStats.Text = string.Format(S.StatsFmt, lstTables.Items.Count, allTables.Count, CountColumns());
         }
 
         private void ShowSelectedTable()
         {
-            if (lstTables.SelectedItems.Count == 0) { lstColumns.Items.Clear(); return; }
-            DbTable t = (DbTable)lstTables.SelectedItems[0].Tag;
+            if (lstTables.SelectedItems.Count == 0) { currentTable = null; lstColumns.Items.Clear(); return; }
+            currentTable = (DbTable)lstTables.SelectedItems[0].Tag;
+            RefreshColumnList();
+        }
+
+        // 按字段名模糊过滤（部分匹配、不区分大小写）后重绘字段网格
+        private void RefreshColumnList()
+        {
+            if (lstColumns == null) return;
+            if (currentTable == null)
+            {
+                lstColumns.Items.Clear();
+                if (lblTableHeader != null) lblTableHeader.Text = S.NoFile;
+                return;
+            }
+
+            string f = FieldKey;
+            DbTable t = currentTable;
+
             string head = t.Name;
             if (t.Source.Length > 0) head += "   [" + t.Source + "]";
             head += "   " + t.Columns.Count + S.ColumnUnit;
-            if (t.Description.Length > 0) head += "\r\n" + t.Description;
-            lblTableHeader.Text = head;
 
+            int shown = 0;
             lstColumns.BeginUpdate();
             lstColumns.Items.Clear();
             for (int i = 0; i < t.Columns.Count; i++)
             {
                 DbColumn c = t.Columns[i];
+                if (!FieldHit(c, f)) continue;
                 ListViewItem it = new ListViewItem((i + 1).ToString());
                 it.SubItems.Add(c.Name);
                 it.SubItems.Add(c.Type);
@@ -1294,8 +1437,15 @@ namespace SqlStructViewer
                 it.SubItems.Add(c.IsPk ? "PK" : "");
                 it.SubItems.Add(c.Comment);
                 lstColumns.Items.Add(it);
+                shown++;
             }
             lstColumns.EndUpdate();
+
+            if (f.Length > 0) head += string.Format(S.MatchFmt, shown, t.Columns.Count);
+
+            string second = (f.Length > 0 && shown == 0) ? S.NoFieldMatch : t.Description;
+            if (second.Length > 0) head += "\r\n" + second;
+            lblTableHeader.Text = head;
         }
 
         private void OnColumnsKeyDown(object sender, KeyEventArgs e)

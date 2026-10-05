@@ -27,6 +27,7 @@ A single **~40 KB** EXE with zero dependencies — no .NET SDK, no Python, no No
 | **Paste a path** | Paste into the toolbar "Path" box and hit Enter; the folder dialog has an address bar too |
 | **Convenient** | Drag & drop, multi-select, `Ctrl+C` copies as TSV straight into Excel |
 | **Bilingual** | English / 中文, switchable from the **Language** menu; follows the Windows UI language on first run |
+| **Field search** | Type part of a column name — `acct id`, `DATE`, `subs_id` — and every loaded table is searched at once; separators (space/`_`/`-`/`.`) are ignored, so `acct id` finds `ACCT_ID` |
 | **Handles messy DDL** | Comment attribution, composite primary keys, `COMMENT ON COLUMN`, quoted identifiers, UTF-8/GBK |
 
 ---
@@ -63,8 +64,8 @@ The build produces exactly one exe — no intermediate files, no dependency copy
 
 ```
 ┌ File  Help ─────────────────────────────────────────────────────────┐
-│ [Open File] [Open Folder]  Path:[__________________] [Open Path]     │
-│                            Filter:[________]   Tables 110/110 Cols 4040│
+│ [Open File] [Open Folder]  Path:[______________] [Open Path]         │
+│              Table:[______]  Field:[______]    Tables 171/171 Cols 4933│
 ├────────────────────┬───────────────────────────────────────────────┤
 │ Table     Cols PK Src│ INF_SUBSCRIBER   [CRM]   73 columns           │
 │ IM_CLASSIFICATION … │ Subscriber basic information.                  │
@@ -78,7 +79,9 @@ The build produces exactly one exe — no intermediate files, no dependency copy
 
 - **Left**: table name, column count, primary key, source (read from the DDL header comment)
 - **Right**: ordinal, column name, type, nullable (Y/N), PK, comment (read from the `--` comment lines above the column)
-- **Top**: path box + filter box; the toolbar on the right shows live `Tables N/N  Columns M`
+- **Top**: path box, **Table** filter (narrows the table list) and **Field** filter — the field filter
+  searches **every loaded table** by partial column name and keeps only the tables that match;
+  the right-hand label shows live `Tables N/N  Columns M`
 
 ---
 
@@ -118,6 +121,8 @@ find your way back even if you land in the wrong one.
 | `Ctrl+O` | Open file |
 | `Ctrl+Shift+D` | Open folder |
 | `Ctrl+Shift+O` | Focus the "Path" box |
+| `Ctrl+F` | Focus the "Field" filter box |
+| `Ctrl+Shift+F` | Focus the "Table" filter box |
 | `Enter` (in the path box) | Open that path |
 | `Ctrl+C` (column grid) | Copy selected rows as TSV |
 | `Ctrl+A` (column grid) | Select all |

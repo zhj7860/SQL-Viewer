@@ -15,7 +15,7 @@ For `SqlStructViewer.exe` v1.0.0. The README explains *what* it is; this documen
 1. [Starting the app](#1-starting-the-app)
 2. [Five ways to open files](#2-five-ways-to-open-files)
 3. [Interface reference](#3-interface-reference)
-4. [Filtering tables](#4-filtering-tables)
+4. [Filtering tables and fields](#4-filtering-tables-and-fields)
 5. [Exporting columns to Excel / Markdown](#5-exporting-columns-to-excel--markdown)
 6. [Command line and diagnostic mode](#6-command-line-and-diagnostic-mode)
 7. [Parsing rules in detail](#7-parsing-rules-in-detail)
@@ -132,13 +132,62 @@ If some files could not be read, `（N 个文件读取失败）` *(N files faile
 
 ---
 
-## 4. Filtering tables
+## 4. Filtering tables and fields
 
-Type a substring into the **过滤** *(Filter)* box. The left table list filters **live**
-(case-insensitive) and the toolbar shows `表 <matched> / <total>　字段 <total>`.
+There are two independent filter boxes in the toolbar.
 
-Clear the box to restore everything. Filtering only affects the left list; it does not change the
-loaded data.
+### 4.1 **Table** filter (`表名:`)
+
+Type a substring; the left table list filters **live**. The same separator-insensitive matching applies,
+so `bc acct`, `bc_acct` and `bcacct` all keep `BC_ACCT`, `BC_ACCT_BILL_CYCLE` and `BC_ACCT_PROP`.
+`Ctrl+Shift+F` jumps to it.
+
+The toolbar shows `Tables <matched> / <total>  Columns <total>`. This filter never changes the loaded data.
+
+### 4.2 **Field** filter (`字段:`)
+
+Type part of a column name. The filter runs over **every table currently loaded**, not just the
+selected one:
+
+- the **table list** is reduced to the tables containing at least one matching column, and its *Cols*
+  column changes to `hits / total` (e.g. `3 / 73`)
+- the **column grid** then shows only the matching columns of whichever table you select
+- the toolbar summarises it as `Tables 127 / 171  matched cols 127 / 5644`
+
+Matching is a **case-insensitive substring** test on a *normalised* name: **spaces, underscores,
+hyphens and dots are ignored**, so `acct id`, `acct_id`, `ACCT-ID` and `acctid` are all equivalent.
+You never need the full name, nor the exact spelling of its separators:
+
+| You type | You get |
+|---|---|
+| `ID` | every column whose name contains `ID` (`ACCT_ID`, `CUST_ID`, `REGION_ID`, …) |
+| `acct id` | `ACCT_ID`, `P_ACCT_ID`, `R_ACCT_ID` — the space is ignored |
+| `DATE` | `EFF_DATE`, `EXP_DATE`; `CREATE_TIME` is **not** matched |
+
+While a field filter is active the header line shows the hit count for the selected table:
+
+```
+BC_ACCT   [CBS (OCS)]   34 columns  matched 2 / 34
+Account
+```
+
+If no table contains the term at all, the table list empties and the header reads
+`No table contains a matching column` *(没有任何表包含该字段)*.
+
+`Ctrl+F` jumps to this box. Clearing it restores all tables and the full column list. The term is
+kept while you click through the matched tables, so you can inspect each hit in turn.
+
+Measured against the 171-table reference set:
+
+| Term | Tables kept | Columns matched |
+|---|---|---|
+| `TENANT_ID` | 127 / 171 | 127 / 5644 |
+| `SUBS_ID` | 20 / 171 | 28 / 5644 |
+| `DATE` | 116 / 171 | 332 / 5644 |
+| `acct id` (or `acct_id` / `ACCT-ID`) | 21 / 171 | 30 / 5644 |
+
+> The filter matches the **column name only** — not the type, not the comment. `Ctrl+A` / `Ctrl+C` copy
+> only the rows currently shown, so a filter is also the fastest way to export a subset.
 
 ---
 
